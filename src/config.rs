@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::path::Path;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::error::AppError;
 
@@ -24,12 +24,14 @@ pub struct ServerConfig {
     pub port: u16,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ModelConfig {
     pub provider: String,
     pub api_base: String,
     pub api_key_env: String,
     pub model: String,
+    #[serde(default)]
+    pub copilot_auth_mode: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]

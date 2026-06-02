@@ -21,7 +21,7 @@ pub fn get_provider(provider_type: &str) -> Result<Box<dyn Provider>, AppError> 
     match provider_type {
         "openai" => Ok(Box::new(openai::OpenAIProvider)),
         "anthropic" => Ok(Box::new(anthropic::AnthropicProvider)),
-        "copilot" => Ok(Box::new(copilot::CopilotProvider)),
+        "copilot" => Ok(Box::new(copilot::CopilotProvider::new()?)),
         other => Err(AppError::Config(format!(
             "Unknown provider type: {}",
             other

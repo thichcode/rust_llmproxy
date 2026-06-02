@@ -15,11 +15,18 @@ models:
     api_base: https://api.anthropic.com
     api_key_env: ANTHROPIC_API_KEY
     model: claude-sonnet-4-20250514
-  copilot:
+  copilot-gpt-4o:
     provider: copilot
     api_base: https://api.githubcopilot.com
     api_key_env: GITHUB_COPILOT_TOKEN
     model: gpt-4o
+    copilot_auth_mode: auto
+  copilot-claude-sonnet:
+    provider: copilot
+    api_base: https://api.githubcopilot.com
+    api_key_env: GITHUB_COPILOT_TOKEN
+    model: claude-sonnet-4
+    copilot_auth_mode: auto
 
 rtk:
   enabled: false

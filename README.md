@@ -122,8 +122,58 @@ curl http://127.0.0.1:20128/anthropic/v1/messages \
 
 Set the base URL to `http://127.0.0.1:20128/v1` in your tool settings to route all LLM requests through mini-ai-router-rs.
 
+## GitHub Copilot Login
+
+mini-ai-router-rs supports GitHub Copilot via OAuth Device Code flow.
+
+### Commands
+
+```bash
+# Authenticate with GitHub Copilot
+cargo run -- copilot login
+
+# Check authentication status
+cargo run -- copilot status
+
+# Logout and remove stored token
+cargo run -- copilot logout
+
+# Start the server
+cargo run -- serve --config config.yaml
+```
+
+### How it works
+
+1. `copilot login` starts a GitHub OAuth Device Code flow
+2. The app prints a verification URL and device code
+3. You open the URL on GitHub and enter the code
+4. The OAuth token is stored locally (under `%APPDATA%/mini-ai-router-rs` on Windows, `~/.config/mini-ai-router-rs` on Linux, `~/Library/Application Support/mini-ai-router-rs` on macOS)
+5. At runtime, the provider exchanges the GitHub OAuth token for a Copilot session token via `https://api.github.com/copilot_internal/v2/token`
+6. The Copilot session token is cached in memory and refreshed automatically
+
+### Auth modes
+
+- **auto** (default): Tries session token exchange first. If unsupported (e.g., Copilot Individual), falls back to raw OAuth bearer token against `api.individual.githubcopilot.com`.
+- **raw_oauth**: Always uses the GitHub OAuth token directly with `api.individual.githubcopilot.com`.
+- **session_token**: Always exchanges for a Copilot session token and uses `api.githubcopilot.com`.
+
+Configure per model:
+```yaml
+models:
+  copilot-gpt-4o:
+    provider: copilot
+    model: gpt-4o
+    copilot_auth_mode: auto
+```
+
+### Security notes
+
+- The GitHub OAuth token is stored on disk locally
+- On Unix, file permissions are set to 0600
+- The Copilot session token is kept in memory only and never written to disk
+- Tokens are never printed in logs or status output (only first 6 chars shown)
+
 ## Notes
 
-- The GitHub Copilot provider is a placeholder and is not yet implemented.
 - Anthropic streaming is not yet implemented (non-streaming works).
 - No database, authentication, or multi-user management is included.

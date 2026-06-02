@@ -19,9 +19,6 @@ pub enum AppError {
 
     #[error("Model '{0}' not found")]
     ModelNotFound(String),
-
-    #[error("Not implemented: {0}")]
-    NotImplemented(String),
 }
 
 impl IntoResponse for AppError {
@@ -34,7 +31,6 @@ impl IntoResponse for AppError {
             AppError::ModelNotFound(m) => {
                 (StatusCode::NOT_FOUND, format!("Model '{}' not found", m))
             }
-            AppError::NotImplemented(msg) => (StatusCode::NOT_IMPLEMENTED, msg.clone()),
         };
 
         let body = Json(json!({
