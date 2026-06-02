@@ -1,0 +1,28 @@
+default_model: gpt-4o-mini
+
+server:
+  host: 127.0.0.1
+  port: 20128
+
+models:
+  gpt-4o-mini:
+    provider: openai
+    api_base: https://api.openai.com/v1
+    api_key_env: OPENAI_API_KEY
+    model: gpt-4o-mini
+  claude-sonnet:
+    provider: anthropic
+    api_base: https://api.anthropic.com
+    api_key_env: ANTHROPIC_API_KEY
+    model: claude-sonnet-4-20250514
+  copilot:
+    provider: copilot
+    api_base: https://api.githubcopilot.com
+    api_key_env: GITHUB_COPILOT_TOKEN
+    model: gpt-4o
+
+rtk:
+  enabled: false
+  max_message_chars: 8000
+  preserve_head_chars: 2000
+  preserve_tail_chars: 2000
