@@ -9,7 +9,22 @@ A lightweight local API gateway written in Rust that exposes OpenAI-compatible e
 - Streaming support for OpenAI-compatible providers
 - Configurable model routing via YAML config
 - RTK/token compression middleware
-- GitHub Copilot adapter placeholder
+- GitHub Copilot + Claude OAuth login
+- Web dashboard with real-time status, test chat, and auth controls
+
+## Dashboard
+
+<p align="center">
+  <img src="screenshots/dashboard-top.png" alt="Dashboard" width="700">
+</p>
+
+<p align="center">
+  <img src="screenshots/dashboard-models.png" alt="Models list" width="700">
+</p>
+
+<p align="center">
+  <img src="screenshots/dashboard-auth.png" alt="Copilot and Claude auth" width="500">
+</p>
 
 ## Prerequisites
 
