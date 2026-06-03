@@ -136,10 +136,9 @@ impl Provider for CopilotProvider {
             .post(&url)
             .header("Authorization", format!("Bearer {}", token))
             .header("Content-Type", "application/json")
-            .header("Copilot-Integration-Id", "mini-ai-router-rs")
-            .header("Editor-Version", "mini-ai-router-rs/0.1.0")
-            .header("Editor-Plugin-Version", "mini-ai-router-rs/0.1.0")
-            .header("User-Agent", "mini-ai-router-rs/0.1.0");
+            .header("Editor-Version", "vscode/1.85.0")
+            .header("Editor-Plugin-Version", "copilot-chat/0.26.7")
+            .header("User-Agent", "GitHubCopilotChat/0.26.7");
 
         if is_stream {
             req_builder = req_builder
