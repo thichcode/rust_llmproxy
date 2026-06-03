@@ -8,14 +8,14 @@ use serde_json::{json, Value};
 
 use crate::error::AppError;
 use crate::models::ChatRequest;
-use crate::router::Router;
+use crate::server::AppState;
 
 pub async fn health() -> Json<Value> {
     Json(json!({ "status": "ok" }))
 }
 
-pub async fn list_models(State(router): State<Arc<Router>>) -> Result<Json<Value>, AppError> {
-    let config = router.config();
+pub async fn list_models(State(state): State<Arc<AppState>>) -> Result<Json<Value>, AppError> {
+    let config = state.router.config();
     let mut data = Vec::new();
     for (name, model_cfg) in &config.models {
         data.push(json!({
@@ -35,11 +35,11 @@ pub async fn list_models(State(router): State<Arc<Router>>) -> Result<Json<Value
 }
 
 pub async fn chat_completions(
-    State(router): State<Arc<Router>>,
+    State(state): State<Arc<AppState>>,
     Json(req): Json<ChatRequest>,
 ) -> Result<axum::response::Response, AppError> {
     let is_stream = req.stream.unwrap_or(false);
-    let body = router.route(req).await?;
+    let body = state.router.route(req).await?;
 
     if is_stream {
         let response = axum::response::Response::builder()
@@ -59,7 +59,7 @@ pub async fn chat_completions(
 }
 
 pub async fn anthropic_messages(
-    State(router): State<Arc<Router>>,
+    State(state): State<Arc<AppState>>,
     Json(anthropic_req): Json<crate::models::AnthropicRequest>,
 ) -> Result<axum::response::Response, AppError> {
     let chat_req = ChatRequest {
@@ -77,7 +77,7 @@ pub async fn anthropic_messages(
         extra: anthropic_req.extra,
     };
 
-    let body = router.route(chat_req).await?;
+    let body = state.router.route(chat_req).await?;
     let value: Value = serde_json::from_str(&body)
         .map_err(|e| AppError::Provider(format!("Failed to parse provider response: {}", e)))?;
     Ok(Json(value).into_response())

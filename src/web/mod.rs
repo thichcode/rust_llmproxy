@@ -1,17 +1,17 @@
 use std::sync::Arc;
 
-use axum::extract::State;
+use axum::extract::{Query, State};
+use axum::response::{Html, IntoResponse};
 use axum::Json;
-use axum::response::Html;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use crate::auth::github_device_oauth::{
     poll_for_token, request_device_code, GITHUB_COPILOT_CLIENT_ID,
 };
-use crate::auth::token_store::{mask_token, GithubTokenData, TokenStore};
+use crate::auth::token_store::{mask_token, ClaudeTokenStore, GithubTokenData, TokenStore};
 use crate::error::AppError;
-use crate::router::Router;
+use crate::server::AppState;
 
 pub async fn dashboard() -> Html<&'static str> {
     Html(include_str!("dashboard.html"))
@@ -32,9 +32,9 @@ pub struct WebModelEntry {
 }
 
 pub async fn web_models(
-    State(router): State<Arc<Router>>,
+    State(state): State<Arc<AppState>>,
 ) -> Result<Json<WebModelsResponse>, AppError> {
-    let config = router.config();
+    let config = state.router.config();
     let mut models = Vec::new();
     for (name, cfg) in &config.models {
         models.push(WebModelEntry {
@@ -186,4 +186,115 @@ pub async fn copilot_logout() -> Result<Json<Value>, AppError> {
     let store = TokenStore::new()?;
     store.delete()?;
     Ok(Json(json!({"success": true})))
+}
+
+// -- Claude / Anthropic OAuth endpoints --
+
+#[derive(Serialize)]
+pub struct ClaudeStatusResponse {
+    pub authenticated: bool,
+    pub token_prefix: Option<String>,
+    pub created_at: Option<u64>,
+}
+
+pub async fn claude_status() -> Json<ClaudeStatusResponse> {
+    let store = match ClaudeTokenStore::new() {
+        Ok(s) => s,
+        Err(_) => {
+            return Json(ClaudeStatusResponse {
+                authenticated: false,
+                token_prefix: None,
+                created_at: None,
+            })
+        }
+    };
+
+    match store.load().unwrap_or(None) {
+        Some(data) => Json(ClaudeStatusResponse {
+            authenticated: true,
+            token_prefix: Some(mask_token(&data.access_token)),
+            created_at: Some(data.created_at),
+        }),
+        None => Json(ClaudeStatusResponse {
+            authenticated: false,
+            token_prefix: None,
+            created_at: None,
+        }),
+    }
+}
+
+#[derive(Deserialize)]
+pub struct ClaudeLoginRequest {
+    pub redirect_uri: String,
+}
+
+pub async fn claude_login(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<ClaudeLoginRequest>,
+) -> Result<Json<Value>, AppError> {
+    let store = ClaudeTokenStore::new()?;
+    if store.load()?.is_some() {
+        return Err(AppError::Provider(
+            "Already authenticated. Logout first.".to_string(),
+        ));
+    }
+
+    let (authorize_url, _state) = state
+        .anthropic_oauth
+        .build_authorize_url(&req.redirect_uri)?;
+
+    Ok(Json(json!({
+        "authorize_url": authorize_url,
+    })))
+}
+
+pub async fn claude_logout() -> Result<Json<Value>, AppError> {
+    let store = ClaudeTokenStore::new()?;
+    store.delete()?;
+    Ok(Json(json!({"success": true})))
+}
+
+#[derive(Deserialize)]
+pub struct ClaudeCallbackParams {
+    pub code: Option<String>,
+    pub state: Option<String>,
+    pub error: Option<String>,
+}
+
+pub async fn claude_callback(
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<ClaudeCallbackParams>,
+) -> Result<axum::response::Response, AppError> {
+    if let Some(err) = &params.error {
+        return Ok(Html(format!(
+            r#"<html><body><h2>OAuth Error</h2><p>{}</p><script>window.close()</script></body></html>"#,
+            err
+        ))
+        .into_response());
+    }
+
+    let code = params
+        .code
+        .ok_or_else(|| AppError::Provider("Missing authorization code".to_string()))?;
+    let oauth_state = params
+        .state
+        .ok_or_else(|| AppError::Provider("Missing state parameter".to_string()))?;
+
+    let token_data = state
+        .anthropic_oauth
+        .exchange_code(&code, &oauth_state)
+        .await?;
+
+    let store = ClaudeTokenStore::new()?;
+    store.save(&token_data)?;
+
+    Ok(Html(
+        r#"<html><body><h2>Authentication successful!</h2><p>You can close this tab.</p><script>
+            if (window.opener) {
+                window.opener.postMessage({type: 'claude-oauth-complete'}, '*');
+            }
+            window.close();
+        </script></body></html>"#,
+    )
+    .into_response())
 }

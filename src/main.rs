@@ -18,10 +18,12 @@ use clap::{Parser, Subcommand};
 use tracing::info;
 use tracing_subscriber::EnvFilter;
 
+use crate::auth::anthropic_oauth::AnthropicOAuth;
 use crate::auth::github_device_oauth::{
     poll_for_token, request_device_code, GITHUB_COPILOT_CLIENT_ID,
 };
-use crate::auth::token_store::{mask_token, GithubTokenData, TokenStore};
+use crate::auth::token_store::{mask_token, ClaudeTokenStore, GithubTokenData, TokenStore};
+use crate::server::AppState;
 use crate::router::Router;
 
 #[derive(Parser, Debug)]
@@ -54,6 +56,11 @@ enum Commands {
         #[command(subcommand)]
         action: CopilotAction,
     },
+    /// Authenticate with Claude (Anthropic OAuth)
+    Claude {
+        #[command(subcommand)]
+        action: ClaudeAction,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -67,6 +74,16 @@ enum UpdateAction {
 #[derive(Subcommand, Debug)]
 enum CopilotAction {
     /// Login to GitHub Copilot via OAuth device flow
+    Login,
+    /// Logout and remove stored token
+    Logout,
+    /// Show authentication status
+    Status,
+}
+
+#[derive(Subcommand, Debug)]
+enum ClaudeAction {
+    /// Login to Claude via OAuth (opens browser)
     Login,
     /// Logout and remove stored token
     Logout,
@@ -94,6 +111,11 @@ async fn main() -> anyhow::Result<()> {
             CopilotAction::Logout => cmd_copilot_logout(),
             CopilotAction::Status => cmd_copilot_status(),
         },
+        Some(Commands::Claude { action }) => match action {
+            ClaudeAction::Login => cmd_claude_login().await,
+            ClaudeAction::Logout => cmd_claude_logout(),
+            ClaudeAction::Status => cmd_claude_status(),
+        },
     }
 }
 
@@ -101,6 +123,11 @@ async fn run_server(config_path: String) -> anyhow::Result<()> {
     let cfg = config::Config::from_file(&config_path)?;
     let config = Arc::new(cfg);
     let router = Arc::new(Router::new(config.clone()));
+
+    let state = Arc::new(AppState {
+        router: router.clone(),
+        anthropic_oauth: Arc::new(AnthropicOAuth::new()),
+    });
 
     let app = AxumRouter::new()
         .route("/health", get(server::handlers::health))
@@ -121,7 +148,11 @@ async fn run_server(config_path: String) -> anyhow::Result<()> {
         .route("/api/web/copilot-logout", post(web::copilot_logout))
         .route("/api/web/update-check", get(web::check_update))
         .route("/api/web/update-apply", post(web::apply_update))
-        .with_state(router.clone());
+        .route("/api/web/claude-status", get(web::claude_status))
+        .route("/api/web/claude-login", post(web::claude_login))
+        .route("/api/web/claude-logout", post(web::claude_logout))
+        .route("/anthropic/oauth/callback", get(web::claude_callback))
+        .with_state(state);
 
     let addr = format!("{}:{}", config.server.host, config.server.port);
     info!("mini-ai-router-rs listening on http://{}", addr);
@@ -255,6 +286,69 @@ fn cmd_copilot_status() -> anyhow::Result<()> {
             println!("token_present: true");
             println!("created_at: {}", data.created_at);
             println!("token_prefix: {}", mask_token(&data.github_access_token));
+        }
+        None => {
+            println!("authenticated: false");
+            println!("token_present: false");
+        }
+    }
+
+    Ok(())
+}
+
+async fn cmd_claude_login() -> anyhow::Result<()> {
+    let store = ClaudeTokenStore::new()?;
+    if store.load()?.is_some() {
+        println!("Already authenticated. Run 'claude logout' first to re-authenticate.");
+        return Ok(());
+    }
+
+    let oauth = AnthropicOAuth::new();
+    let port: u16 = 20228;
+    let redirect_uri = format!("http://127.0.0.1:{}/anthropic/oauth/callback", port);
+
+    let (authorize_url, _state) = oauth.build_authorize_url(&redirect_uri)?;
+
+    println!("1. Opening browser for Claude authorization...");
+    if let Err(_e) = open::that(&authorize_url) {
+        println!("Could not open browser automatically.");
+        println!("   Please open this URL manually:");
+        println!("   {}", authorize_url);
+    } else {
+        println!("   URL: {}", authorize_url);
+    }
+
+    println!();
+    println!("Waiting for authorization callback on http://127.0.0.1:{}/anthropic/oauth/callback", port);
+    println!("Make sure the server is running to receive the callback.");
+    println!("After authorizing, re-run 'claude status' to verify.");
+
+    Ok(())
+}
+
+fn cmd_claude_logout() -> anyhow::Result<()> {
+    let store = ClaudeTokenStore::new()?;
+    let was_present = store.load()?.is_some();
+    store.delete()?;
+    if was_present {
+        println!("✓ Logged out. Token removed.");
+    } else {
+        println!("No stored token found.");
+    }
+    Ok(())
+}
+
+fn cmd_claude_status() -> anyhow::Result<()> {
+    let store = ClaudeTokenStore::new()?;
+    let token_data = store.load()?;
+
+    match token_data {
+        Some(data) => {
+            println!("authenticated: true");
+            println!("token_present: true");
+            println!("created_at: {}", data.created_at);
+            println!("token_prefix: {}", mask_token(&data.access_token));
+            println!("expires_in: {}s", data.expires_in);
         }
         None => {
             println!("authenticated: false");

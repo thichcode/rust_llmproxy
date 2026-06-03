@@ -32,6 +32,8 @@ pub struct ModelConfig {
     pub model: String,
     #[serde(default)]
     pub copilot_auth_mode: String,
+    #[serde(default)]
+    pub anthropic_auth_mode: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]

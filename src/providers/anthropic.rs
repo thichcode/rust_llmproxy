@@ -3,6 +3,7 @@ use reqwest::Client;
 use tracing::warn;
 
 use super::Provider;
+use crate::auth::token_store::ClaudeTokenStore;
 use crate::config::ModelConfig;
 use crate::error::AppError;
 use crate::models::{ChatRequest, ProviderResponse};
@@ -20,7 +21,11 @@ impl Provider for AnthropicProvider {
         let anthropic_req = openai_anthropic::to_anthropic_request(req, config.model.clone());
         let url = format!("{}/v1/messages", config.api_base.trim_end_matches('/'));
 
-        let api_key = get_api_key(&config.api_key_env)?;
+        let api_key = if config.anthropic_auth_mode == "oauth" {
+            get_oauth_token()?
+        } else {
+            get_api_key(&config.api_key_env)?
+        };
 
         let client = Client::new();
         let response = client
@@ -72,4 +77,14 @@ impl Provider for AnthropicProvider {
 fn get_api_key(env_var: &str) -> Result<String, AppError> {
     std::env::var(env_var)
         .map_err(|_| AppError::Config(format!("Environment variable {} is not set", env_var)))
+}
+
+fn get_oauth_token() -> Result<String, AppError> {
+    let store = ClaudeTokenStore::new()?;
+    let data = store
+        .load()?
+        .ok_or_else(|| AppError::Config(
+            "Claude OAuth token not found. Use 'claude login' first.".to_string(),
+        ))?;
+    Ok(data.access_token)
 }

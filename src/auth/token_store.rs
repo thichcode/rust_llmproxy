@@ -11,17 +11,58 @@ pub struct GithubTokenData {
     pub created_at: u64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AnthropicTokenData {
+    pub access_token: String,
+    pub refresh_token: Option<String>,
+    pub expires_in: u64,
+    pub created_at: u64,
+}
+
+fn project_dirs() -> Result<PathBuf, AppError> {
+    let base = directories::ProjectDirs::from("com", "mini-ai-router-rs", "mini-ai-router-rs")
+        .ok_or_else(|| AppError::Config("Cannot determine config directory".to_string()))?;
+    Ok(base.data_dir().to_path_buf())
+}
+
+fn save_to_path<T: Serialize>(path: &PathBuf, data: &T) -> Result<(), AppError> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| {
+            AppError::Config(format!("Failed to create config directory: {}", e))
+        })?;
+    }
+    let contents = serde_json::to_string_pretty(data)
+        .map_err(|e| AppError::Config(format!("Failed to serialize token: {}", e)))?;
+    std::fs::write(path, &contents)
+        .map_err(|e| AppError::Config(format!("Failed to write token file: {}", e)))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if let Ok(metadata) = std::fs::metadata(path) {
+            let mut perms = metadata.permissions();
+            perms.set_mode(0o600);
+            let _ = std::fs::set_permissions(path, perms);
+        }
+    }
+    Ok(())
+}
+
+fn delete_file(path: &PathBuf) -> Result<(), AppError> {
+    if path.exists() {
+        std::fs::remove_file(path)
+            .map_err(|e| AppError::Config(format!("Failed to delete token file: {}", e)))?;
+    }
+    Ok(())
+}
+
 pub struct TokenStore {
     path: PathBuf,
 }
 
 impl TokenStore {
     pub fn new() -> Result<Self, AppError> {
-        let base = directories::ProjectDirs::from("com", "mini-ai-router-rs", "mini-ai-router-rs")
-            .ok_or_else(|| AppError::Config("Cannot determine config directory".to_string()))?;
-        let data_dir = base.data_dir().to_path_buf();
         Ok(TokenStore {
-            path: data_dir.join("copilot_token.json"),
+            path: project_dirs()?.join("copilot_token.json"),
         })
     }
 
@@ -46,37 +87,52 @@ impl TokenStore {
     }
 
     pub fn save(&self, data: &GithubTokenData) -> Result<(), AppError> {
-        if let Some(parent) = self.path.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| {
-                AppError::Config(format!("Failed to create config directory: {}", e))
-            })?;
-        }
-
-        let contents = serde_json::to_string_pretty(data)
-            .map_err(|e| AppError::Config(format!("Failed to serialize token: {}", e)))?;
-
-        std::fs::write(&self.path, &contents)
-            .map_err(|e| AppError::Config(format!("Failed to write token file: {}", e)))?;
-
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            if let Ok(metadata) = std::fs::metadata(&self.path) {
-                let mut perms = metadata.permissions();
-                perms.set_mode(0o600);
-                let _ = std::fs::set_permissions(&self.path, perms);
-            }
-        }
-
-        Ok(())
+        save_to_path(&self.path, data)
     }
 
     pub fn delete(&self) -> Result<(), AppError> {
-        if self.path.exists() {
-            std::fs::remove_file(&self.path)
-                .map_err(|e| AppError::Config(format!("Failed to delete token file: {}", e)))?;
+        delete_file(&self.path)
+    }
+}
+
+pub struct ClaudeTokenStore {
+    path: PathBuf,
+}
+
+impl ClaudeTokenStore {
+    pub fn new() -> Result<Self, AppError> {
+        Ok(ClaudeTokenStore {
+            path: project_dirs()?.join("claude_token.json"),
+        })
+    }
+
+    #[allow(dead_code)]
+    pub fn from_path(path: PathBuf) -> Self {
+        ClaudeTokenStore { path }
+    }
+
+    #[allow(dead_code)]
+    pub fn path(&self) -> &PathBuf {
+        &self.path
+    }
+
+    pub fn load(&self) -> Result<Option<AnthropicTokenData>, AppError> {
+        if !self.path.exists() {
+            return Ok(None);
         }
-        Ok(())
+        let contents = std::fs::read_to_string(&self.path)
+            .map_err(|e| AppError::Config(format!("Failed to read token file: {}", e)))?;
+        let data: AnthropicTokenData = serde_json::from_str(&contents)
+            .map_err(|e| AppError::Config(format!("Failed to parse token file: {}", e)))?;
+        Ok(Some(data))
+    }
+
+    pub fn save(&self, data: &AnthropicTokenData) -> Result<(), AppError> {
+        save_to_path(&self.path, data)
+    }
+
+    pub fn delete(&self) -> Result<(), AppError> {
+        delete_file(&self.path)
     }
 }
 
