@@ -46,31 +46,32 @@ impl CopilotProvider {
             )
         })
     }
+}
 
-    fn resolve_session_token(
+impl CopilotProvider {
+    async fn resolve_session_token(
         &self,
         github_token: &str,
     ) -> Result<(String, String, AuthMode), AppError> {
-        let mut cache = self
-            .session_cache
-            .lock()
-            .map_err(|e| AppError::Provider(format!("Session cache lock error: {}", e)))?;
+        {
+            let cache = self.session_cache.lock().map_err(|e| {
+                AppError::Provider(format!("Session cache lock error: {}", e))
+            })?;
 
-        if let Some(ref cached) = *cache {
-            if !is_session_token_expired(&cached.token) {
-                let base_url = cached
-                    .token
-                    .endpoints
-                    .as_ref()
-                    .and_then(|e| e.api.clone())
-                    .unwrap_or_else(|| "https://api.githubcopilot.com".to_string());
-                return Ok((cached.token.token.clone(), base_url, cached.mode.clone()));
+            if let Some(ref cached) = *cache {
+                if !is_session_token_expired(&cached.token) {
+                    let base_url = cached
+                        .token
+                        .endpoints
+                        .as_ref()
+                        .and_then(|e| e.api.clone())
+                        .unwrap_or_else(|| "https://api.githubcopilot.com".to_string());
+                    return Ok((cached.token.token.clone(), base_url, cached.mode.clone()));
+                }
             }
         }
 
-        let rt = tokio::runtime::Handle::current();
-
-        match rt.block_on(exchange_copilot_session_token(github_token)) {
+        match exchange_copilot_session_token(github_token).await {
             Ok(session) => {
                 let base_url = session
                     .endpoints
@@ -79,6 +80,9 @@ impl CopilotProvider {
                     .unwrap_or_else(|| "https://api.githubcopilot.com".to_string());
                 info!("Copilot auth mode: session_token");
                 let token = session.token.clone();
+                let mut cache = self.session_cache.lock().map_err(|e| {
+                    AppError::Provider(format!("Session cache lock error: {}", e))
+                })?;
                 *cache = Some(CopilotSessionCache {
                     token: session,
                     mode: AuthMode::SessionToken,
@@ -93,6 +97,9 @@ impl CopilotProvider {
                 info!("Copilot auth mode: raw_oauth (fallback)");
                 let token = github_token.to_string();
                 let base_url = "https://api.individual.githubcopilot.com".to_string();
+                let mut cache = self.session_cache.lock().map_err(|e| {
+                    AppError::Provider(format!("Session cache lock error: {}", e))
+                })?;
                 *cache = Some(CopilotSessionCache {
                     token: CopilotSessionToken {
                         token: token.clone(),
@@ -119,7 +126,7 @@ impl Provider for CopilotProvider {
 
         let github_data = self.get_github_token()?;
         let (token, base_url, _mode) =
-            self.resolve_session_token(&github_data.github_access_token)?;
+            self.resolve_session_token(&github_data.github_access_token).await?;
 
         let url = format!("{}/chat/completions", base_url.trim_end_matches('/'));
         let is_stream = req.stream.unwrap_or(false);
@@ -150,11 +157,9 @@ impl Provider for CopilotProvider {
         let status = response.status();
 
         if status.as_u16() == 401 || status.as_u16() == 403 {
-            let mut cache = self
-                .session_cache
-                .lock()
-                .map_err(|e| AppError::Provider(format!("Session cache lock error: {}", e)))?;
-            *cache = None;
+            if let Ok(mut cache) = self.session_cache.lock() {
+                *cache = None;
+            }
             warn!(
                 "Copilot returned {}, clearing session cache for retry",
                 status
