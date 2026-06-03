@@ -39,22 +39,34 @@ pub async fn chat_completions(
     Json(req): Json<ChatRequest>,
 ) -> Result<axum::response::Response, AppError> {
     let is_stream = req.stream.unwrap_or(false);
-    let body = state.router.route(req).await?;
+    let result = state.router.route(req).await?;
 
     if is_stream {
         let response = axum::response::Response::builder()
             .header("Content-Type", "text/event-stream")
             .header("Cache-Control", "no-cache")
             .header("Connection", "keep-alive")
-            .body(axum::body::Body::from(body))
+            .header("X-RTK-Applied", if result.rtk_applied { "true" } else { "false" })
+            .body(axum::body::Body::from(result.body))
             .map_err(|e| {
                 AppError::Provider(format!("Failed to build streaming response: {}", e))
             })?;
         Ok(response)
     } else {
-        let value: Value = serde_json::from_str(&body)
+        let value: Value = serde_json::from_str(&result.body)
             .map_err(|e| AppError::Provider(format!("Failed to parse provider response: {}", e)))?;
-        Ok(Json(value).into_response())
+
+        let mut resp = json!({
+            "rtk_applied": result.rtk_applied,
+        });
+
+        if let Value::Object(obj) = &mut resp {
+            if let Value::Object(data) = &value {
+                obj.extend(data.clone());
+            }
+        }
+
+        Ok(Json(resp).into_response())
     }
 }
 
@@ -77,8 +89,8 @@ pub async fn anthropic_messages(
         extra: anthropic_req.extra,
     };
 
-    let body = state.router.route(chat_req).await?;
-    let value: Value = serde_json::from_str(&body)
+    let result = state.router.route(chat_req).await?;
+    let value: Value = serde_json::from_str(&result.body)
         .map_err(|e| AppError::Provider(format!("Failed to parse provider response: {}", e)))?;
     Ok(Json(value).into_response())
 }

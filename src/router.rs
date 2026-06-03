@@ -12,6 +12,11 @@ pub struct Router {
     config: Arc<Config>,
 }
 
+pub struct RouteResult {
+    pub body: String,
+    pub rtk_applied: bool,
+}
+
 impl Router {
     pub fn new(config: Arc<Config>) -> Self {
         Router { config }
@@ -21,7 +26,7 @@ impl Router {
         &self.config
     }
 
-    pub async fn route(&self, mut req: ChatRequest) -> Result<String, AppError> {
+    pub async fn route(&self, mut req: ChatRequest) -> Result<RouteResult, AppError> {
         let model_name = if self.config.models.contains_key(&req.model) {
             req.model.clone()
         } else {
@@ -38,6 +43,7 @@ impl Router {
             .get(&model_name)
             .ok_or_else(|| AppError::ModelNotFound(model_name.clone()))?;
 
+        let rtk_enabled = self.config.rtk.enabled;
         self.apply_rtk(&mut req);
 
         info!(
@@ -48,7 +54,10 @@ impl Router {
 
         let response = provider.send_message(req, model_config).await?;
 
-        Ok(response.body.unwrap_or_default())
+        Ok(RouteResult {
+            body: response.body.unwrap_or_default(),
+            rtk_applied: rtk_enabled,
+        })
     }
 
     fn apply_rtk(&self, req: &mut ChatRequest) {

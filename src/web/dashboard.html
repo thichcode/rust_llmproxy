@@ -106,6 +106,7 @@ pre{background:#0d1117; padding:12px; border-radius:6px; overflow-x:auto; font-s
     <label style="font-size:0.85rem; color:#8b949e"><input type="checkbox" id="chat-stream"> stream</label>
   </div>
   <pre id="chat-response" style="display:none"></pre>
+  <div id="chat-meta" style="display:none; margin-top:8px; font-size:0.8rem; color:#8b949e"></div>
 </div>
 
 </div>
@@ -277,24 +278,39 @@ async function claudeLogout(){
 }
 
 // Chat
+function showMeta(rtk,usage){
+  const el=$('chat-meta'); el.style.display='block';
+  let html='';
+  if(rtk!==undefined) html+=`<span style="margin-right:16px">RTK: ${rtk?'<span style="color:#d29922">compressed</span>':'<span style="color:#8b949e">off</span>'}</span>`;
+  if(usage) html+=`<span style="margin-right:12px">Prompt: ${usage.prompt_tokens||0}</span><span style="margin-right:12px">Completion: ${usage.completion_tokens||0}</span><span>Total: ${usage.total_tokens||0}</span>`;
+  el.innerHTML=html;
+}
+
 async function sendChat(){
   const model=$('chat-model').value; const msg=$('chat-input').value;
   if(!msg){toast('Enter a message','err'); return}
   const btn=$('btn-send'); btn.disabled=true; btn.textContent='Sending...';
   const pre=$('chat-response'); pre.style.display='block';
+  const meta=$('chat-meta'); meta.style.display='none';
   const stream=$('chat-stream').checked;
   pre.textContent=stream?'Connecting...':'Sending...';
   try{
     if(stream){
       const res=await fetch(BASE+'/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model,messages:[{role:'user',content:msg}],stream:true})});
+      const rtk=res.headers.get('X-RTK-Applied')==='true';
       const reader=res.body.getReader(); const decoder=new TextDecoder(); let text='';
       pre.textContent='';
+      let usage=null;
       while(true){const{done,value}=await reader.read(); if(done)break; text+=decoder.decode(value,{stream:true}); const lines=text.split('\n'); text=lines.pop()||'';
-        for(const line of lines){if(line.startsWith('data: ')&&line!=='data: [DONE]'){try{const d=JSON.parse(line.slice(6)); const c=d.choices?.[0]?.delta?.content||''; pre.textContent+=c}catch(e){}}}
+        for(const line of lines){if(line.startsWith('data: ')&&line!=='data: [DONE]'){try{const d=JSON.parse(line.slice(6)); const c=d.choices?.[0]?.delta?.content||''; pre.textContent+=c; if(d.usage) usage=d.usage}catch(e){}}}
       }
+      showMeta(rtk,usage);
     }else{
-      const d=await api('/v1/chat/completions',{method:'POST',body:JSON.stringify({model,messages:[{role:'user',content:msg}]})});
+      const res=await fetch(BASE+'/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model,messages:[{role:'user',content:msg}]})});
+      const rtk=res.headers.get('X-RTK-Applied')==='true';
+      const d=await res.json();
       pre.textContent=JSON.stringify(d,null,2);
+      showMeta(rtk,d.usage);
     }
   }catch(e){pre.textContent='Error: '+e.message}
   finally{btn.disabled=false; btn.textContent='Send'}
