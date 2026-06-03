@@ -7,6 +7,7 @@ mod router;
 mod rtk;
 mod server;
 mod transform;
+mod web;
 
 use std::sync::Arc;
 
@@ -94,6 +95,12 @@ async fn run_server(config_path: String) -> anyhow::Result<()> {
             "/anthropic/v1/messages",
             post(server::handlers::anthropic_messages),
         )
+        .route("/", get(web::dashboard))
+        .route("/api/web/models", get(web::web_models))
+        .route("/api/web/copilot-status", get(web::copilot_status))
+        .route("/api/web/copilot-login", post(web::copilot_login))
+        .route("/api/web/copilot-poll", post(web::copilot_poll))
+        .route("/api/web/copilot-logout", post(web::copilot_logout))
         .with_state(router.clone());
 
     let addr = format!("{}:{}", config.server.host, config.server.port);

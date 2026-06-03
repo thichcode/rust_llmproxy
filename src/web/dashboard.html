@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>mini-ai-router-rs</title>
+<style>
+*{box-sizing:border-box; margin:0; padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:#0d1117; color:#c9d1d9; padding:20px}
+.container{max-width:900px; margin:0 auto}
+h1{font-size:1.5rem; margin-bottom:8px; color:#58a6ff}
+.subtitle{color:#8b949e; margin-bottom:24px; font-size:0.9rem}
+.card{background:#161b22; border:1px solid #30363d; border-radius:8px; padding:20px; margin-bottom:16px}
+.card h2{font-size:1rem; margin-bottom:12px; color:#f0f6fc}
+.row{display:flex; gap:16px; flex-wrap:wrap}
+.stat{flex:1; min-width:140px; padding:12px; background:#0d1117; border-radius:6px; border:1px solid #21262d}
+.stat-label{font-size:0.75rem; color:#8b949e; text-transform:uppercase}
+.stat-value{font-size:1.3rem; font-weight:600; margin-top:4px}
+.stat-value.ok{color:#3fb950}
+.stat-value.err{color:#f85149}
+.stat-value.warn{color:#d29922}
+table{width:100%; border-collapse:collapse; font-size:0.85rem}
+th,td{padding:8px 12px; text-align:left; border-bottom:1px solid #21262d}
+th{color:#8b949e; font-weight:500}
+td{font-family:'SFMono-Regular',Consolas,'Liberation Mono',monospace}
+.badge{padding:2px 8px; border-radius:12px; font-size:0.75rem; font-weight:500}
+.badge.openai{background:#0d419d; color:#79c0ff}
+.badge.anthropic{background:#5c3d1a; color:#ffa657}
+.badge.copilot{background:#1f6feb33; color:#58a6ff}
+.btn{padding:8px 20px; border:1px solid #30363d; border-radius:6px; background:#21262d; color:#c9d1d9; cursor:pointer; font-size:0.85rem}
+.btn:hover{background:#30363d}
+.btn.primary{background:#238636; border-color:#238636; color:#fff}
+.btn.primary:hover{background:#2ea043}
+.btn.danger{background:#da3633; border-color:#da3633; color:#fff}
+.btn.small{padding:4px 12px; font-size:0.75rem}
+.status-line{margin:4px 0; font-size:0.85rem}
+.status-label{color:#8b949e; display:inline-block; width:110px}
+#toast{position:fixed; bottom:20px; right:20px; padding:12px 20px; border-radius:6px; display:none; z-index:100}
+#toast.ok{background:#238636; color:#fff}
+#toast.err{background:#da3633; color:#fff}
+pre{background:#0d1117; padding:12px; border-radius:6px; overflow-x:auto; font-size:0.8rem; margin-top:12px; max-height:300px; overflow-y:auto}
+.spinner{display:inline-block; width:16px; height:16px; border:2px solid #30363d; border-top-color:#58a6ff; border-radius:50%; animation:spin .8s linear infinite; vertical-align:middle}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div class="container">
+<h1>mini-ai-router-rs</h1>
+<div class="subtitle">Local AI API Gateway</div>
+
+<div class="card" id="status-card">
+  <h2>Server Status</h2>
+  <div class="row">
+    <div class="stat"><div class="stat-label">Status</div><div class="stat-value" id="health-status"><span class="spinner"></span></div></div>
+    <div class="stat"><div class="stat-label">Uptime</div><div class="stat-value" id="uptime">-</div></div>
+    <div class="stat"><div class="stat-label">Config</div><div class="stat-value" id="config-file">-</div></div>
+  </div>
+</div>
+
+<div class="card" id="copilot-card">
+  <h2>GitHub Copilot</h2>
+  <div id="copilot-status"><span class="spinner"></span> loading...</div>
+  <div style="margin-top:12px; display:flex; gap:8px">
+    <button class="btn primary small" id="btn-copilot-login" style="display:none" onclick="copilotLogin()">Login</button>
+    <button class="btn danger small" id="btn-copilot-logout" style="display:none" onclick="copilotLogout()">Logout</button>
+    <button class="btn small" id="btn-copilot-refresh" onclick="loadCopilotStatus()">Refresh</button>
+  </div>
+</div>
+
+<div class="card" id="models-card">
+  <h2>Models</h2>
+  <table><thead><tr><th>ID</th><th>Provider</th><th>Model</th><th>Auth Mode</th></tr></thead><tbody id="models-table"></tbody></table>
+</div>
+
+<div class="card" id="chat-card">
+  <h2>Test Chat</h2>
+  <div style="display:flex; gap:8px; margin-bottom:8px">
+    <select id="chat-model" style="flex:1; padding:8px; background:#0d1117; border:1px solid #21262d; border-radius:6px; color:#c9d1d9"></select>
+    <select id="chat-provider" style="padding:8px; background:#0d1117; border:1px solid #21262d; border-radius:6px; color:#c9d1d9">
+      <option value="">all</option>
+    </select>
+  </div>
+  <input id="chat-input" type="text" placeholder="Enter a message..." style="width:100%; padding:10px; background:#0d1117; border:1px solid #21262d; border-radius:6px; color:#c9d1d9; margin-bottom:8px"
+    onkeydown="if(event.key==='Enter')sendChat()">
+  <div style="display:flex; gap:8px; align-items:center">
+    <button class="btn primary" id="btn-send" onclick="sendChat()">Send</button>
+    <label style="font-size:0.85rem; color:#8b949e"><input type="checkbox" id="chat-stream"> stream</label>
+  </div>
+  <pre id="chat-response" style="display:none"></pre>
+</div>
+
+</div>
+
+<script>
+const BASE = '';
+
+function $(id){return document.getElementById(id)}
+
+async function api(url, opts){
+  const res=await fetch(BASE+url, {...opts, headers:{'Content-Type':'application/json',...opts?.headers}});
+  if(!res.ok){const e=await res.json().catch(()=>({})); throw new Error(e.error?.message||res.statusText)}
+  return res.json();
+}
+
+function toast(msg,type){const t=$('toast'); t.textContent=msg; t.className=type; t.style.display='block'; setTimeout(()=>t.style.display='none',3000)}
+
+// Health
+async function loadHealth(){
+  try{
+    const d=await api('/health');
+    $('health-status').innerHTML='<span class="stat-value ok">● Online</span>';
+  }catch(e){
+    $('health-status').innerHTML='<span class="stat-value err">● Offline</span>';
+  }
+}
+
+// Models
+async function loadModels(){
+  try{
+    const d=await api('/api/web/models');
+    const tb=$('models-table'); tb.innerHTML='';
+    const sel=$('chat-model'); sel.innerHTML='';
+    const providers=new Set();
+    for(const m of d.models){
+      const row=tb.insertRow();
+      row.insertCell().textContent=m.id;
+      row.insertCell().innerHTML=`<span class="badge ${m.provider}">${m.provider}</span>`;
+      row.insertCell().textContent=m.model_id;
+      row.insertCell().textContent=m.auth_mode||'-';
+      providers.add(m.provider);
+      const opt=document.createElement('option');
+      opt.value=m.id; opt.textContent=m.id; sel.appendChild(opt);
+    }
+    const ps=$('chat-provider');
+    ps.innerHTML='<option value="">all</option>';
+    for(const p of [...providers].sort()){const o=document.createElement('option'); o.value=p; o.textContent=p; ps.appendChild(o)}
+  }catch(e){$('models-table').innerHTML='<tr><td colspan="4" style="color:#f85149">Failed to load: '+e.message+'</td></tr>'}
+}
+
+// Copilot
+async function loadCopilotStatus(){
+  const cs=$('copilot-status');
+  try{
+    const d=await api('/api/web/copilot-status');
+    cs.innerHTML=`
+      <div class="status-line"><span class="status-label">Authenticated</span> ${d.authenticated?'<span style="color:#3fb950">true</span>':'<span style="color:#f85149">false</span>'}</div>
+      ${d.token_prefix?'<div class="status-line"><span class="status-label">Token</span> '+d.token_prefix+'</div>':''}
+      ${d.created_at?'<div class="status-line"><span class="status-label">Created</span> '+new Date(d.created_at*1000).toLocaleString()+'</div>':''}
+    `;
+    $('btn-copilot-login').style.display=d.authenticated?'none':'inline-block';
+    $('btn-copilot-logout').style.display=d.authenticated?'inline-block':'none';
+  }catch(e){cs.innerHTML='<span style="color:#f85149">Error: '+e.message+'</span>'}
+}
+
+async function copilotLogin(){
+  const btn=$('btn-copilot-login'); btn.disabled=true; btn.textContent='Logging in...';
+  try{
+    const d=await api('/api/web/copilot-login',{method:'POST'});
+    alert(`1. Open: ${d.verification_uri}\n2. Enter code: ${d.user_code}\n3. Waiting for authorization...`);
+    const r=await api('/api/web/copilot-poll',{method:'POST',body:JSON.stringify({device_code:d.device_code,interval:d.interval,expires_in:d.expires_in})});
+    toast('Copilot login successful','ok');
+    loadCopilotStatus();
+  }catch(e){toast('Login failed: '+e.message,'err')}
+  finally{btn.disabled=false; btn.textContent='Login'}
+}
+
+async function copilotLogout(){
+  if(!confirm('Logout from Copilot?'))return;
+  try{await api('/api/web/copilot-logout',{method:'POST'}); toast('Logged out','ok'); loadCopilotStatus()}
+  catch(e){toast('Logout failed: '+e.message,'err')}
+}
+
+// Chat
+async function sendChat(){
+  const model=$('chat-model').value; const msg=$('chat-input').value;
+  if(!msg){toast('Enter a message','err'); return}
+  const btn=$('btn-send'); btn.disabled=true; btn.textContent='Sending...';
+  const pre=$('chat-response'); pre.style.display='block';
+  const stream=$('chat-stream').checked;
+  pre.textContent=stream?'Connecting...':'Sending...';
+  try{
+    if(stream){
+      const res=await fetch(BASE+'/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model,messages:[{role:'user',content:msg}],stream:true})});
+      const reader=res.body.getReader(); const decoder=new TextDecoder(); let text='';
+      pre.textContent='';
+      while(true){const{done,value}=await reader.read(); if(done)break; text+=decoder.decode(value,{stream:true}); const lines=text.split('\n'); text=lines.pop()||'';
+        for(const line of lines){if(line.startsWith('data: ')&&line!=='data: [DONE]'){try{const d=JSON.parse(line.slice(6)); const c=d.choices?.[0]?.delta?.content||''; pre.textContent+=c}catch(e){}}}
+      }
+    }else{
+      const d=await api('/v1/chat/completions',{method:'POST',body:JSON.stringify({model,messages:[{role:'user',content:msg}]})});
+      pre.textContent=JSON.stringify(d,null,2);
+    }
+  }catch(e){pre.textContent='Error: '+e.message}
+  finally{btn.disabled=false; btn.textContent='Send'}
+}
+
+loadHealth(); loadModels(); loadCopilotStatus();
+setInterval(loadHealth,10000);
+</script>
+</body>
+</html>
