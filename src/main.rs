@@ -7,6 +7,7 @@ mod router;
 mod rtk;
 mod server;
 mod transform;
+mod updater;
 mod web;
 
 use std::sync::Arc;
@@ -43,11 +44,24 @@ enum Commands {
         #[arg(short, long, default_value = "config.yaml")]
         config: String,
     },
+    /// Check for updates and apply
+    Update {
+        #[command(subcommand)]
+        action: UpdateAction,
+    },
     /// Authenticate with GitHub Copilot
     Copilot {
         #[command(subcommand)]
         action: CopilotAction,
     },
+}
+
+#[derive(Subcommand, Debug)]
+enum UpdateAction {
+    /// Check if a new version is available
+    Check,
+    /// Download and apply the latest version
+    Apply,
 }
 
 #[derive(Subcommand, Debug)]
@@ -71,6 +85,10 @@ async fn main() -> anyhow::Result<()> {
     match cli.command {
         None => run_server(cli.config).await,
         Some(Commands::Serve { config }) => run_server(config).await,
+        Some(Commands::Update { action }) => match action {
+            UpdateAction::Check => cmd_update_check().await,
+            UpdateAction::Apply => cmd_update_apply().await,
+        },
         Some(Commands::Copilot { action }) => match action {
             CopilotAction::Login => cmd_copilot_login().await,
             CopilotAction::Logout => cmd_copilot_logout(),
@@ -109,6 +127,52 @@ async fn run_server(config_path: String) -> anyhow::Result<()> {
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     axum::serve(listener, app).await?;
 
+    Ok(())
+}
+
+async fn cmd_update_check() -> anyhow::Result<()> {
+    let current = updater::current_version();
+    println!("Current version: v{}", current);
+
+    match updater::fetch_latest_release().await {
+        Ok(release) => {
+            println!("Latest version:  {}", release.tag_name);
+            if updater::compare_versions(current, &release.tag_name)? == Some(true) {
+                println!("Update available! Run 'update apply' to download.");
+                if let Some(body) = &release.body {
+                    println!("\nChangelog:\n{}", body);
+                }
+            } else {
+                println!("You are up to date.");
+            }
+        }
+        Err(e) => {
+            println!("Failed to check for updates: {}", e);
+        }
+    }
+    Ok(())
+}
+
+async fn cmd_update_apply() -> anyhow::Result<()> {
+    let current = updater::current_version();
+    println!("Current version: v{}", current);
+
+    let release = updater::fetch_latest_release().await?;
+    println!("Latest version:  {}", release.tag_name);
+
+    match updater::compare_versions(current, &release.tag_name)? {
+        Some(true) => {
+            println!("Downloading {}...", release.tag_name);
+            let bytes = updater::download_exe(&release).await?;
+            println!("Downloaded {} bytes. Applying update...", bytes.len());
+            updater::apply_update(&bytes)?;
+            println!("Update applied! Please restart mini-ai-router-rs.");
+            println!("Backup saved as: mini-ai-router-rs.exe.bak");
+        }
+        _ => {
+            println!("You are already up to date (v{}).", current);
+        }
+    }
     Ok(())
 }
 

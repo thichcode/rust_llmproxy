@@ -18,3 +18,4 @@ clap = { version = "4", features = ["derive"] }
 futures-util = "0.3"
 async-trait = "0.1"
 directories = "5"
+semver = "1"
