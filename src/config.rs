@@ -55,7 +55,7 @@ fn default_host() -> String {
 }
 
 fn default_port() -> u16 {
-    20128
+    20228
 }
 
 fn default_max_message_chars() -> usize {

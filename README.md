@@ -44,7 +44,7 @@ Copy `config.example.yaml` to `config.yaml` and edit:
 default_model: gpt-4o-mini
 server:
   host: 127.0.0.1
-  port: 20128
+  port: 20228
 models:
   gpt-4o-mini:
     provider: openai
@@ -73,19 +73,19 @@ rtk:
 ### Health check
 
 ```bash
-curl http://127.0.0.1:20128/health
+curl http://127.0.0.1:20228/health
 ```
 
 ### List models
 
 ```bash
-curl http://127.0.0.1:20128/v1/models
+curl http://127.0.0.1:20228/v1/models
 ```
 
 ### Chat completion (OpenAI format)
 
 ```bash
-curl http://127.0.0.1:20128/v1/chat/completions \
+curl http://127.0.0.1:20228/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
     "model": "gpt-4o-mini",
@@ -97,7 +97,7 @@ curl http://127.0.0.1:20128/v1/chat/completions \
 ### Streaming
 
 ```bash
-curl http://127.0.0.1:20128/v1/chat/completions \
+curl http://127.0.0.1:20228/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
     "model": "gpt-4o-mini",
@@ -109,7 +109,7 @@ curl http://127.0.0.1:20128/v1/chat/completions \
 ### Anthropic endpoint
 
 ```bash
-curl http://127.0.0.1:20128/anthropic/v1/messages \
+curl http://127.0.0.1:20228/anthropic/v1/messages \
   -H "Content-Type: application/json" \
   -d '{
     "model": "claude-sonnet",
@@ -120,7 +120,7 @@ curl http://127.0.0.1:20128/anthropic/v1/messages \
 
 ## Using with Cline / Cursor / OpenCode
 
-Set the base URL to `http://127.0.0.1:20128/v1` in your tool settings to route all LLM requests through mini-ai-router-rs.
+Set the base URL to `http://127.0.0.1:20228/v1` in your tool settings to route all LLM requests through mini-ai-router-rs.
 
 ## GitHub Copilot Login
 
