@@ -7,10 +7,10 @@ use crate::config::ModelConfig;
 use crate::error::AppError;
 use crate::models::{ChatRequest, ProviderResponse};
 
-pub struct Phi4Provider;
+pub struct CustomProvider;
 
 #[async_trait]
-impl Provider for Phi4Provider {
+impl Provider for CustomProvider {
     async fn send_message(
         &self,
         mut req: ChatRequest,
@@ -34,23 +34,23 @@ impl Provider for Phi4Provider {
         }
 
         let response = request_builder.send().await.map_err(|e| {
-            warn!("Phi-4 provider request failed: {}", e);
-            AppError::Provider(format!("Request to Phi-4 failed: {}", e))
+            warn!("Custom provider request failed: {}", e);
+            AppError::Provider(format!("Request to custom provider failed: {}", e))
         })?;
 
         let status = response.status();
         if !status.is_success() {
             let body = response.text().await.unwrap_or_default();
-            warn!("Phi-4 provider returned {}: {}", status, body);
+            warn!("Custom provider returned {}: {}", status, body);
             return Err(AppError::Provider(format!(
-                "Phi-4 returned status {}: {}",
+                "Custom provider returned status {}: {}",
                 status, body
             )));
         }
 
         if is_stream {
             let body_bytes = response.bytes().await.map_err(|e| {
-                warn!("Failed to read Phi-4 streaming response: {}", e);
+                warn!("Failed to read custom provider streaming response: {}", e);
                 AppError::Provider(format!("Failed to read streaming response: {}", e))
             })?;
 
@@ -59,7 +59,7 @@ impl Provider for Phi4Provider {
             })
         } else {
             let body = response.text().await.map_err(|e| {
-                warn!("Failed to read Phi-4 response body: {}", e);
+                warn!("Failed to read custom provider response body: {}", e);
                 AppError::Provider(format!("Failed to read response: {}", e))
             })?;
 
