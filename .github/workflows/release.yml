@@ -18,6 +18,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
@@ -50,6 +52,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Download artifact
         uses: actions/download-artifact@v4
@@ -62,8 +66,7 @@ jobs:
         run: |
           echo "## Changelog" > changelog.md
           echo "" >> changelog.md
-          git log $(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")..HEAD --oneline --no-decorate \
-            | while read line; do echo "- $line"; done >> changelog.md
+          git tag -l --format='%(contents)' "${{ github.ref_name }}" >> changelog.md
 
           echo "changelog<<EOF" >> $GITHUB_OUTPUT
           cat changelog.md >> $GITHUB_OUTPUT
