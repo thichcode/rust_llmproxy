@@ -28,8 +28,11 @@ use crate::router::Router;
     about = "A lightweight local AI API gateway"
 )]
 struct Cli {
+    #[arg(short, long, default_value = "config.yaml", global = true)]
+    config: String,
+
     #[command(subcommand)]
-    command: Commands,
+    command: Option<Commands>,
 }
 
 #[derive(Subcommand, Debug)]
@@ -65,8 +68,9 @@ async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Serve { config } => run_server(config).await,
-        Commands::Copilot { action } => match action {
+        None => run_server(cli.config).await,
+        Some(Commands::Serve { config }) => run_server(config).await,
+        Some(Commands::Copilot { action }) => match action {
             CopilotAction::Login => cmd_copilot_login().await,
             CopilotAction::Logout => cmd_copilot_logout(),
             CopilotAction::Status => cmd_copilot_status(),
