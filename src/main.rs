@@ -119,6 +119,8 @@ async fn run_server(config_path: String) -> anyhow::Result<()> {
         .route("/api/web/copilot-login", post(web::copilot_login))
         .route("/api/web/copilot-poll", post(web::copilot_poll))
         .route("/api/web/copilot-logout", post(web::copilot_logout))
+        .route("/api/web/update-check", get(web::check_update))
+        .route("/api/web/update-apply", post(web::apply_update))
         .with_state(router.clone());
 
     let addr = format!("{}:{}", config.server.host, config.server.port);

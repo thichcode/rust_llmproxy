@@ -57,6 +57,15 @@ pre{background:#0d1117; padding:12px; border-radius:6px; overflow-x:auto; font-s
   </div>
 </div>
 
+<div class="card" id="update-card">
+  <h2>Update</h2>
+  <div id="update-status"><span class="spinner"></span> checking...</div>
+  <div style="margin-top:12px; display:flex; gap:8px">
+    <button class="btn small" onclick="checkUpdate()">Check</button>
+    <button class="btn primary small" id="btn-update-apply" style="display:none" onclick="applyUpdate()">Download & Apply</button>
+  </div>
+</div>
+
 <div class="card" id="copilot-card">
   <h2>GitHub Copilot</h2>
   <div id="copilot-status"><span class="spinner"></span> loading...</div>
@@ -90,6 +99,8 @@ pre{background:#0d1117; padding:12px; border-radius:6px; overflow-x:auto; font-s
 </div>
 
 </div>
+
+<div id="toast"></div>
 
 <script>
 const BASE = '';
@@ -135,6 +146,41 @@ async function loadModels(){
     ps.innerHTML='<option value="">all</option>';
     for(const p of [...providers].sort()){const o=document.createElement('option'); o.value=p; o.textContent=p; ps.appendChild(o)}
   }catch(e){$('models-table').innerHTML='<tr><td colspan="4" style="color:#f85149">Failed to load: '+e.message+'</td></tr>'}
+}
+
+// Update
+async function checkUpdate(){
+  const us=$('update-status');
+  try{
+    const d=await api('/api/web/update-check');
+    let html=`<div class="status-line"><span class="status-label">Current</span> v${d.current_version}</div>`;
+    if(d.latest_version) html+=`<div class="status-line"><span class="status-label">Latest</span> ${d.latest_version}</div>`;
+    if(d.has_update){
+      html+=`<div class="status-line"><span class="status-label" style="color:#d29922">Update available!</span></div>`;
+      if(d.changelog) html+=`<pre style="margin-top:8px">${d.changelog}</pre>`;
+      $('btn-update-apply').style.display='inline-block';
+    }else if(d.error){
+      html+=`<div class="status-line"><span class="status-label" style="color:#f85149">Error</span> ${d.error}</div>`;
+    }else{
+      html+=`<div class="status-line"><span style="color:#3fb950">Up to date</span></div>`;
+    }
+    us.innerHTML=html;
+  }catch(e){us.innerHTML='<span style="color:#f85149">Error: '+e.message+'</span>'}
+}
+
+async function applyUpdate(){
+  const btn=$('btn-update-apply'); btn.disabled=true; btn.textContent='Downloading...';
+  try{
+    const d=await api('/api/web/update-apply',{method:'POST'});
+    if(d.success){
+      toast(d.message,'ok');
+      $('update-status').innerHTML=`<div class="status-line"><span style="color:#3fb950">${d.message}</span></div>`;
+      $('btn-update-apply').style.display='none';
+    }else{
+      toast(d.message,'err');
+    }
+  }catch(e){toast('Update failed: '+e.message,'err')}
+  finally{btn.disabled=false; btn.textContent='Download & Apply'}
 }
 
 // Copilot
@@ -194,7 +240,7 @@ async function sendChat(){
   finally{btn.disabled=false; btn.textContent='Send'}
 }
 
-loadHealth(); loadModels(); loadCopilotStatus();
+loadHealth(); loadModels(); loadCopilotStatus(); checkUpdate();
 setInterval(loadHealth,10000);
 </script>
 </body>

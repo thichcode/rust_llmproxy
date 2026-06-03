@@ -139,6 +139,49 @@ pub async fn copilot_poll(
     Ok(Json(json!({"success": true})))
 }
 
+pub async fn check_update() -> Result<Json<Value>, AppError> {
+    let current = crate::updater::current_version();
+    match crate::updater::fetch_latest_release().await {
+        Ok(release) => {
+            let has_update = crate::updater::compare_versions(current, &release.tag_name)?
+                .unwrap_or(false);
+            Ok(Json(json!({
+                "current_version": current,
+                "latest_version": release.tag_name,
+                "has_update": has_update,
+                "changelog": release.body,
+            })))
+        }
+        Err(e) => Ok(Json(json!({
+            "current_version": current,
+            "has_update": false,
+            "error": e.to_string(),
+        }))),
+    }
+}
+
+pub async fn apply_update() -> Result<Json<Value>, AppError> {
+    let current = crate::updater::current_version();
+    let release = crate::updater::fetch_latest_release().await?;
+
+    if crate::updater::compare_versions(current, &release.tag_name)? != Some(true) {
+        return Ok(Json(json!({
+            "success": false,
+            "message": "Already up to date."
+        })));
+    }
+
+    let bytes = crate::updater::download_exe(&release).await?;
+    crate::updater::apply_update(&bytes)?;
+
+    Ok(Json(json!({
+        "success": true,
+        "message": format!("Update to {} applied. Please restart the server.", release.tag_name),
+        "current_version": current,
+        "new_version": release.tag_name,
+    })))
+}
+
 pub async fn copilot_logout() -> Result<Json<Value>, AppError> {
     let store = TokenStore::new()?;
     store.delete()?;
